@@ -1,0 +1,246 @@
+######################################
+#####        REQUIREMENTS      #######
+######################################
+library(tidyverse)
+library(dplyr)
+library(tidyr)
+library(plyr)
+library(gplots)
+library(ggplot2)
+library(limma)
+library(DESeq2)
+library(stats)
+library(MASS)
+library(corrplot)
+library(igraph)
+library(DESeq2)
+library(ggpubr)
+library(xlsx)
+library(enrichR)
+library(sm)
+library(eulerr)
+library(readr)
+library(dplyr)
+library(igraph)
+library(enrichR)
+library(ggbiplot)
+library(STRINGdb)
+######################################
+#####      UPLOAD FILES        #######
+######################################
+cells <- read.csv(file="data/Cells.csv")
+mice <- read.csv(file="data/Mice.csv") 
+mice_orthologs<-read.csv(file="data/mice_orthologs.csv")
+##########################################
+#####     DESCRIPTION OF DATA      #######
+##########################################
+# 1 DATASET OF MICE:     csv:"mice" -> 22783 GENES
+#                        FPKM VALUES OF SIX CODITIONS   -> "FPKM_W5_FVB" (CONTROL IN WEEK 5)
+#                                                       -> "FPKM_W5_Q82" (PATIENT IN WEEK 5)
+#                                                       -> "FPKM_W12_FVB" (CONTROL IN WEEK 12)
+#                                                       -> "FPKM_W12_Q82" (PATIENT IN WEEK 12)
+#                                                       -> "FPKM_W28_FVB" (CONTROL IN WEEK 28)
+#                                                       -> "FPKM_W28_Q82" (PATIENT IN WEEK 28)
+#                                         LO2FC VALUES  -> "LOG2FCmice_w5"
+#                                                       -> "LOG2FCmice_w12"
+#                                                       -> "LOG2FCmice_w28"
+# 3 DATASETS OF CELLS:  csv:"cells"-> 3984 GENES
+#                       FPKM VALUES OF 4 CONDITIONS     -> "FPKM_D0" (CONTROL)             
+#                                                       -> "FPKM_D2" (PATIENT IN DAY 2)
+#                                                       -> "FPKM_D5" (PATIENT IN DAY 5)
+#                                                       -> "FPKM_D10" (PATIENT IN DAY 10)
+#                                         LO2FC VALUES  -> "LOG2FCcellsD2.D0"
+#                                                       -> "LOG2FCcellD5.D0"
+#                                                       -> "LOG2FCcellsD10.D0"
+#####################################################
+###      CREATE DATA WITH ORTHOLOGS GENES      #####
+####################################################
+orthologs<-mice_orthologs[which(mice_orthologs$Rank=="high"), ] #in column Rank keep only "high"
+mice_orthologs<-merge(mice,orthologs, by="Mouse_Symbol")        #merge by "Mouse Symbol"
+names(mice_orthologs)
+###################################################                                 
+#######     FPKM AND LOG2FC OF MICE      ##########
+###################################################
+names(mice_orthologs)
+FPKMmice<-mice_orthologs[c("FPKM_W5_Q82","FPKM_W12_Q82","FPKM_W28_Q82","FPKM_W5_FVB","FPKM_W12_FVB","FPKM_W28_FVB","gene_name")] #crate dataframe FPKM mice values and gene name
+FCmice_w5<-(mice_orthologs$"FPKM_W5_Q82"/mice_orthologs$"FPKM_W5_FVB")   #create variable FCmice_w5
+LOG2FCmice_w5<-log2(FCmice_w5)                                         #create variable LOG2FCmice_w5
+FCmice_w12<-(mice_orthologs$"FPKM_W12_Q82"/mice_orthologs$"FPKM_W12_FVB")#create variable FCmice_w12
+LOG2FCmice_w12<-log2(FCmice_w12)                                       #create variable LOG2FCmice_w12
+FCmice_w28<-(mice_orthologs$"FPKM_W28_Q82"/mice_orthologs$"FPKM_W28_FVB")#create variable FCmice_w28
+LOG2FCmice_w28<-log2(FCmice_w28)                                       #create variable LOG2FCmice_w28
+LOG2FCmice<-data.frame(mice_orthologs$"gene_name",LOG2FCmice_w5,LOG2FCmice_w12,LOG2FCmice_w28) #create dataframe LOG2FCmice w5/w12/w28 and gene name
+names(LOG2FCmice)[names(LOG2FCmice) == 'mice_orthologs.gene_name'] <- 'gene_name' #rename the column "mice_orthologs.gene_name" to "gene name"
+LOG2FCmice<- do.call(data.frame, lapply(LOG2FCmice, function(x) {replace(x, is.infinite(x) | is.na(x), 0)}))
+###################################################
+###         FPKM AND LOG2FC OF CELLS           ####
+###################################################
+names(cells)
+FPKMcells<-cells[c("FPKM_D0","FPKM_D2","FPKM_D5","FPKM_D10","gene_name")] #crate dataframe FPKM cells values and gene name
+names(FPKMcells)
+FCcellsD2.D0<-(cells$"FPKM_D2"/cells$"FPKM_D0") #create variable FCcells_D0
+LOG2FCcellsD2.D0<-log2(FCcellsD2.D0)          #create variable LO2FCcells_D0
+FCcellsD5.D0<-(cells$"FPKM_D5"/cells$"FPKM_D0") #create variable FCcells_D5
+LOG2FCcellsD5.D0<-log2(FCcellsD5.D0)           #create variable LOG2FCcells_D5
+FCcellsD10.D0<-(cells$"FPKM_D10"/cells$"FPKM_D0") #create variable FCcells_D10
+LOG2FCcellsD10.D0<-log2(FCcellsD10.D0)        #create variable LOG2FCcells_D10
+LOG2FCcells<-data.frame(cells$"gene_name",LOG2FCcellsD2.D0,LOG2FCcellsD5.D0,LOG2FCcellsD10.D0) #create dataframe LOG2FCcells  and gene name
+names(LOG2FCcells)[names(LOG2FCcells) == 'cells.gene_name'] <- 'gene_name' #rename the column 'cells.gene_name' to "gene name"
+LOG2FCcells<- do.call(data.frame, lapply(LOG2FCcells, function(x) {replace(x, is.infinite(x) | is.na(x), 0)}))
+###################################################
+#######    DISTRIBUTION  OF DATA          #########
+###################################################
+#LOG2FC MICE#
+histLOG2FCmice<-LOG2FCmice[c("LOG2FCmice_w5","LOG2FCmice_w12","LOG2FCmice_w28")]
+hist(histLOG2FCmice)
+
+#LOG2FC CELLS#
+histLOG2FCcells<-LOG2FCcells[c("LOG2FCcellsD2.D0","LOG2FCcellsD5.D0","LOG2FCcellsD10.D0")]
+hist(histLOG2FCcells)
+
+#Density Plots_MICE
+plot(density(LOG2FCmice$LOG2FCmice_w5), xlab="Log2FC_Mice",main="Density distribution of Log2fc/Mice")
+lines(density(LOG2FCmice$LOG2FCmice_w12), col="red")
+lines(density(LOG2FCmice$LOG2FCmice_w28),col="blue")
+legend("topleft",c("LOG2FCmice week 5", "LOG2FCmice week 12", "LOG2FCmice week 28"),
+       col=c("black","red", "blue"), lty=1,cex = 1)
+
+#Density Plots_Cells
+plot(density(LOG2FCcells$LOG2FCcellsD10.D0), xlab="Log2FC_3984_genes",main="Density distribution of Log2fc/Cells_3984_genes")
+lines(density(LOG2FCcells$LOG2FCcellsD5.D0), col="red")
+lines(density(LOG2FCcells$LOG2FCcellsD2.D0),col="blue")
+legend("topleft",c("LOG2FCcells_688 Day 10", "LOG2FCcells_688 Day 5", "LOG2FCcells_688 Day 2"),
+       col=c("black","red", "blue"), lty=1,cex = 1)
+
+####################################################
+#####            SET THRESHOLD               #######
+#####                |0.5|                   #######
+####################################################
+#cells
+thresLOG2FCcellsD2.D0<-LOG2FCcells[which(LOG2FCcells$LOG2FCcellsD2.D0<(-1) | LOG2FCcells$LOG2FCcellsD2.D0>1),]
+thresLOG2FCcellsD2.D0<-thresLOG2FCcellsD2.D0[c("gene_name", "LOG2FCcellsD2.D0")]
+thresLOG2FCcellsD5.D0<-LOG2FCcells[which(LOG2FCcells$LOG2FCcellsD5.D0<(-1) | LOG2FCcells$LOG2FCcellsD5.D0>1),]
+thresLOG2FCcellsD5.D0<-thresLOG2FCcellsD5.D0[c("gene_name", "LOG2FCcellsD5.D0")]
+thresLOG2FCcellsD10.D0<-LOG2FCcells[which(LOG2FCcells$LOG2FCcellsD10.D0<(-1) | LOG2FCcells$LOG2FCcellsD10.D0>1),]
+thresLOG2FCcellsD10.D0<-thresLOG2FCcellsD10.D0[c("gene_name", "LOG2FCcellsD10.D0")]
+###################################################
+####     COMRARISON MICE/CELLS      #########
+###################################################
+#D2~W5#
+cellsD2.D0_mice_week5<-inner_join(threslog2fcmice_w5,thresLOG2FCcellsD2.D0,by="gene_name")
+cellsD2.D0_mice_week5
+#D5~W12#
+cellsD5.D0_mice_week12<-inner_join(threslog2fcmice_w12,thresLOG2FCcellsD5.D0,by="gene_name")
+cellsD5.D0_mice_week12
+#D10~W28
+#cellsD10.D0_mice_week28<-inner_join(threslog2fcmice_w28,thresLOG2FCcellsD10.D0, by="gene_name")
+#cellsD10.D0_mice_week28
+
+#distribution
+
+plot(density(cellsD10.D0_mice_week28_Human$LOG2FCmice_w28), xlab="Log2FC",main="Density distribution/mice_week 28", col="red")
+plot(density(cellsD10.D0_mice_week28_Human$LOG2FCcellsD10.D0) ,xlab="Log2FC",main="Density distribution/cells_day 10",col="red")
+
+#Euler_plot
+
+nrow(threslog2fcmice_w12)
+nrow(thresLOG2FCcellsD5.D0)
+nrow(cellsD5.D0_mice_week12)
+euler <- euler(c(Mice_week12 = 1001, Cells_Day5 = 1870,   "Mice_week12&Cells_Day5" = 69))
+plot(euler,
+     fills = list(fill = c("steelblue", "red"), alpha = 0.7),
+     edges = FALSE,
+     fontsize = 10,
+     quantities = list(fontsize = 12))
+
+
+plot(euler,
+     fills = list(fill = c("steelblue", "red", "seagreen2"), alpha = 0.7),
+     edges = FALSE,
+     fontsize = 10,
+     quantities = list(fontsize = 12))
+###################################################
+#######      VOLCANO PLOT           ##############
+##################################################
+pvaluecells_D10_D0$Log2FC_D10.vs.D0 <- as.numeric(as.character(pvaluecells_D10_D0$Log2FC_D10.vs.D0))
+
+pvaluecells_D10_D0[pvaluecells_D10_D0 == Inf] <- 0
+#pvaluecells_D5_D0 <- pvaluecells_D5_D0 %>% filter(FC_D5.vs.D0 != 0)
+
+pvaluecells_D10_D0$threshold<-as.factor(abs(pvaluecells_D10_D0$Log2FC_D10.vs.D0) > 0.5)
+
+View(pvaluecells_D5_D0)
+## Sort by ordered padj
+
+pvaluecells_D10_D0_ordered <- pvaluecells_D10_D0[order(pvaluecells_D10_D0$p.value_D10.vs.D0), ] 
+
+
+View(pvaluecells_D10_D0_ordered)
+pvaluecells_D10_D0_ordered <- pvaluecells_D10_D0_ordered %>% filter(p.value_D10.vs.D0 != 0)
+
+
+volc=ggplot(human_normalized) +
+  geom_point(aes(x = log2fdc, y = -log10(GFOLD.0.01.),)) +
+  ggtitle("Volcano plot") +
+  xlab("log2FC human") + 
+  ylab("-log10 (p-value)") +
+  theme(legend.position = "none",
+        plot.title = element_text(size = rel(1.5), hjust = 0.5),
+        axis.title = element_text(size = rel(1.25)))
+volc+geom_text_repel(data=head(pvaluecells_D10_D0_ordered, 20), aes(x = log2fdc, y = -log10(GFOLD.0.01.),
+                                                                   label=gene_name))
+View(human_normalized)
+
+#heatmap
+
+row.names<- cellsD10.D0_mice_week28_Human$gene_name
+cellsD10.D0_mice_week28_Human$gene_name<-NULL
+cellsD10.D0_mice_week28_Human= as.matrix(as.data.frame(lapply(cellsD10.D0_mice_week28_Human, as.numeric)))
+rownames(cellsD10.D0_mice_week28_Human) <- row.names
+cellsD10.D0_mice_week28_Human
+heatmap(cellsD10.D0_mice_week28_Human,  scale="none")
+colfunc <- colorRampPalette(c("steelblue", "red"))
+heatmap.2(cellsD10.D0_mice_week28_Human,col=colfunc(15),scale="none",cexRow=0.5,cexCol=0.7,srtCol = 0,trace="none")
+
+#write dysregulated genes to excel
+cellsD10.D0_mice_week28<-inner_join(threslog2fcmice_w28,thresLOG2FCcellsD10.D0, by="gene_name")
+cellsD10.D0_mice_week28
+write.xlsx(cellsD10.D0_mice_week28_Human, file="C:/Users/emily/cellsD5.D0_mice_week12.xlsx")
+
+#pca#
+library(devtools)
+devtools::install_github("vqv/ggbiplot",force=TRUE)
+library(ggbiplot)
+cellsD10.D0_mice_week28
+cellsD10.D0_mice_week28= prcomp(cellsD10.D0_mice_week28[,-1], retx=TRUE, center=TRUE,scale= TRUE)
+str(cellsD10.D0_mice_week28)
+summary(cellsD10.D0_mice_week28)
+g <- ggbiplot(cellsD10.D0_mice_week28,var.axes=TRUE,scale=1,labels=cellsD10.D0_mice_week28$gene_name)
+print(g)
+
+#correlation
+#cellsD2.D0_mice_week5$gene_name<-NULL
+#cellsD2.D0_mice_week5
+#corcellsD2.D0_mice_week5<-cor(cellsD2.D0_mice_week5)
+#cov2cor(corcellsD2.D0_mice_week5)
+#corrplot(corcellsD2.D0_mice_week5,method="number")
+
+#Enrichment analysis#
+install.packages("devtools") 
+devtools::install_github("wjawaid/enrichR",force=TRUE)
+
+dbs <- listEnrichrDbs()
+head(dbs)
+dbs <- c("KEGG_2016")
+list(cellsD10.D0_mice_week28$gene_name)
+enriched <- enrichr(c("ACOT1","BMP4","BRWD3","C1QL1","CREG1","DUSP4","ITGBL1","KLF2","SACS","ULBP1"),dbs)
+printEnrich(enriched, paste(".enrichR.txt",sep=""), sep = "\t", columns = c(1:9))
+write.xlsx(enriched,file="C:/Users/emily/cellsD10.D0_mice_week28_Humanenrich.xlsx")
+
+#network#              
+string_db=STRINGdb$new(version="10",species=9606,score_threshold=400)
+myDF=string_db$map(cellsD10.D0_mice_week28_Human,"gene_name",removeUnmappedRows=TRUE)
+string_db$plot_network(myDF$STRING_id)
+
+#heatmaps_centralities#
+
